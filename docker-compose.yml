@@ -52,7 +52,7 @@ services:
       - monitor-net
 
   promtail:
-    image: grafana/promtail:v2.4.1
+    image: grafana/promtail:2.4.1
     container_name: promtail
     volumes:
       - /var/log:/var/log
