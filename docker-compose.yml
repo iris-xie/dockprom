@@ -7,8 +7,57 @@ networks:
 volumes:
     prometheus_data: {}
     grafana_data: {}
+    tempo-data: {}
 
 services:
+  tempo:
+    image: grafana/tempo:latest
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    volumes:
+      - ./tempo/tempo-s3.yaml:/etc/tempo.yaml
+      - tempo-data:/tmp/tempo
+    #ports:
+      #- "9411:9411"  
+      #- "3200:3200"  
+    expose:
+      - 9411  # zipkin ingest
+      - 3200
+    logging:
+      driver: loki
+      options:
+        loki-url: 'http://localhost:3100/loki/api/v1/push'
+
+  loki:
+    image: grafana/loki:v2.4.1
+    container_name: loki
+    #ports:
+      #- "3100:3100"      
+    expose:
+      - 3100
+    volumes:
+      - ./loki:/etc/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    environment:
+      - JAEGER_AGENT_HOST=tempo
+      - JAEGER_ENDPOINT=http://tempo:14268/api/traces # send traces to Tempo
+      - JAEGER_SAMPLER_TYPE=const
+      - JAEGER_SAMPLER_PARAM=1
+    logging:
+      driver: loki
+      options:
+        loki-url: 'http://localhost:3100/loki/api/v1/push'
+    networks:
+      - monitor-net
+
+  promtail:
+    image: grafana/promtail:v2.4.1
+    container_name: promtail
+    volumes:
+      - /var/log:/var/log
+      - ./promtail:/etc/promtail
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - monitor-net
 
   prometheus:
     image: prom/prometheus:v2.31.1
@@ -68,7 +117,7 @@ services:
       org.label-schema.group: "monitoring"
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.43.0
+    image: gcr.io/cadvisor/cadvisor:0.43.0
     container_name: cadvisor
     privileged: true
     devices:
@@ -88,7 +137,7 @@ services:
       org.label-schema.group: "monitoring"
 
   grafana:
-    image: grafana/grafana:8.2.5
+    image: grafana/grafana:v8.2.5
     container_name: grafana
     volumes:
       - grafana_data:/var/lib/grafana
@@ -118,13 +167,18 @@ services:
       org.label-schema.group: "monitoring"
 
   caddy:
-    image: caddy:2.3.0
+    image: caddy:v2.3.0
     container_name: caddy
     ports:
       - "3000:3000"
+      - "3100:3100"
+      - "3200:3200"
+      - "8080:8080"      
       - "9090:9090"
       - "9093:9093"
       - "9091:9091"
+      - "9100:9100"      
+      - "9411:9411"      
     volumes:
       - ./caddy:/etc/caddy
     environment:
